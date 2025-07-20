@@ -1,0 +1,52 @@
+version: 2
+updates:
+  # Enable version updates for npm
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "PresidentAnderson"
+    assignees:
+      - "PresidentAnderson"
+    commit-message:
+      prefix: "npm"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "npm"
+    ignore:
+      # Ignore major version updates for React Native and Expo
+      - dependency-name: "react-native"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Group all development dependencies together
+      development-dependencies:
+        dependency-type: "development"
+      # Group all production dependencies together
+      production-dependencies:
+        dependency-type: "production"
+      # Group React Navigation updates
+      react-navigation:
+        patterns:
+          - "@react-navigation/*"
+
+  # Enable security updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"

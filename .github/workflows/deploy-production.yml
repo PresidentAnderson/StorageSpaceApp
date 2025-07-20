@@ -1,0 +1,56 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+    
+    - name: Setup Expo
+      uses: expo/expo-github-action@v8
+      with:
+        expo-version: latest
+        token: ${{ secrets.EXPO_TOKEN }}
+        eas-version: latest
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run tests
+      run: npm test --if-present
+    
+    - name: Build for production
+      run: |
+        npx eas build --platform all --non-interactive
+      env:
+        EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    
+    - name: Submit to app stores
+      if: github.event_name == 'workflow_dispatch'
+      run: |
+        npx eas submit --platform ios --latest
+        npx eas submit --platform android --latest
+      env:
+        EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+    
+    - name: Deploy OTA Update
+      run: |
+        npx eas update --branch production --message "Production deployment from ${{ github.sha }}"
+      env:
+        EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
