@@ -69,25 +69,39 @@ For the best experience, allow StorageSpace to access your location:
 ### Step 1: Select Location
 
 1. Browse or search for a location
-2. Tap on a location to view details:
-   - Photos of the facility
-   - Full address and directions
-   - Operating hours
-   - Available amenities
-   - Pricing information
-   - Reviews from other users
-   - Policies and restrictions
+2. Use filters to narrow options:
+   - **Distance**: Within 0.5km, 1km, 5km, 10km+
+   - **Price Range**: Budget ($2-5/hr), Standard ($5-8/hr), Premium ($8+/hr)
+   - **Location Type**: Hotels, Cafes, Shops, Lockers, Storage facilities
+   - **Features**: 24/7 access, Security cameras, Insurance, Climate control
+   - **Ratings**: 4+ stars, 4.5+ stars
+3. Tap on a location to view details:
+   - **Photo Gallery**: High-resolution facility photos
+   - **Location Info**: Full address, GPS coordinates, directions
+   - **Operating Hours**: Daily schedules and holiday hours
+   - **Amenities**: Available features and services
+   - **Pricing**: Hourly, daily, and weekly rates
+   - **Reviews**: User ratings and detailed feedback
+   - **Policies**: Size limits, prohibited items, cancellation terms
+   - **Live Availability**: Real-time capacity updates
 
 ### Step 2: Choose Date and Time
 
 1. Tap "Book Now"
 2. Select your storage dates:
-   - **Drop-off date**: When you'll arrive
-   - **Pick-up date**: When you'll collect
+   - **Drop-off date**: When you'll arrive (today or future dates)
+   - **Pick-up date**: When you'll collect (same day or up to 30 days)
+   - **Quick Options**: Later today, Tomorrow, This weekend
 3. Choose time slots:
-   - Drop-off time (15-minute windows)
-   - Pick-up time (15-minute windows)
-4. View total duration and pricing
+   - **Drop-off time**: Available in 15-minute windows
+   - **Pick-up time**: Flexible scheduling with reminders
+   - **Extended Hours**: Some locations offer 24/7 access
+   - **Same Day**: Available until 2 hours before closing
+4. **Smart Scheduling**:
+   - View real-time availability
+   - Get suggestions based on location traffic
+   - See total duration and pricing
+   - Option to set pickup reminders
 
 ### Step 3: Select Bags
 

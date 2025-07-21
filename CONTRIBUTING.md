@@ -64,17 +64,23 @@ git merge upstream/development
 
 # Create feature branch
 git checkout -b feature/your-feature-name
+
+# Run initial setup
+npm install
+npm run check:all
 ```
 
 ### 3. Making Changes
 
 Follow our coding standards:
 
-- Use TypeScript for all new code
-- Follow existing patterns and conventions
-- Write self-documenting code with clear variable names
-- Add comments for complex logic
-- Keep functions small and focused
+- **TypeScript**: Use TypeScript for all new code with strict mode
+- **Testing**: Write tests for all new functionality (aim for 90%+ coverage)
+- **Performance**: Consider performance implications of your changes
+- **Accessibility**: Ensure all UI changes are accessible
+- **Security**: Follow security best practices
+- **Documentation**: Update relevant documentation
+- **Code Style**: Follow existing patterns and use our linting rules
 
 ### 4. Commit Guidelines
 
@@ -106,11 +112,20 @@ git commit -m "docs(api): update authentication endpoints"
 
 ### 5. Testing
 
-Run all tests before submitting:
+Run comprehensive tests before submitting:
 
 ```bash
 # Run unit tests
 npm test
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run integration tests
+npm run test:integration
+
+# Run E2E tests (if applicable)
+npm run test:e2e
 
 # Run linting
 npm run lint
@@ -118,8 +133,14 @@ npm run lint
 # Type checking
 npm run typecheck
 
+# Performance testing
+npm run test:performance
+
+# Security scanning
+npm run security:audit
+
 # Run all checks
-npm run test:all
+npm run check:all
 ```
 
 ### 6. Submitting a Pull Request

@@ -138,10 +138,13 @@ npm run ios -- --configuration Release
 
 ```bash
 # Upload to TestFlight
-eas submit --platform ios --latest
+eas submit --platform ios --latest --profile production
 
 # Or manually with Xcode
 # Archive → Distribute App → App Store Connect → Upload
+
+# Add external testers
+eas submit:beta --platform ios --groups "beta-testers,internal-team"
 ```
 
 ### 5. App Store Submission
@@ -196,7 +199,12 @@ cd ..
 
 ```bash
 # Upload to Google Play
-eas submit --platform android --latest
+eas submit --platform android --latest --profile production
+
+# Upload to specific track
+eas submit --platform android --latest --track internal
+eas submit --platform android --latest --track alpha
+eas submit --platform android --latest --track beta
 
 # Or manually upload
 # app/build/outputs/bundle/release/app-release.aab
