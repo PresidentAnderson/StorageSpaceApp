@@ -9,9 +9,13 @@ import HomeScreen from '../screens/HomeScreen';
 import MapScreen from '../screens/MapScreen';
 import BookingsScreen from '../screens/BookingsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import FTPConnectionsScreen from '../screens/FTPConnectionsScreen';
 import LocationDetailsScreen from '../screens/LocationDetailsScreen';
 import BookingFlowScreen from '../screens/BookingFlowScreen';
 import BookingConfirmationScreen from '../screens/BookingConfirmationScreen';
+import FTPBrowserScreen from '../screens/FTPBrowserScreen';
+import FTPSettingsScreen from '../screens/FTPSettingsScreen';
+import FileTransfersScreen from '../screens/FileTransfersScreen';
 
 import { RootStackParamList } from '../types';
 
@@ -34,6 +38,9 @@ const TabNavigator = () => {
               break;
             case 'Bookings':
               iconName = focused ? 'calendar' : 'calendar-outline';
+              break;
+            case 'Files':
+              iconName = focused ? 'folder' : 'folder-outline';
               break;
             case 'Profile':
               iconName = focused ? 'person' : 'person-outline';
@@ -59,6 +66,7 @@ const TabNavigator = () => {
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Map" component={MapScreen} />
       <Tab.Screen name="Bookings" component={BookingsScreen} />
+      <Tab.Screen name="Files" component={FTPConnectionsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -97,6 +105,26 @@ const AppNavigator = () => {
           name="BookingConfirmation"
           component={BookingConfirmationScreen}
           options={{ title: 'Booking Confirmed' }}
+        />
+        <Stack.Screen
+          name="FTPConnections"
+          component={FTPConnectionsScreen}
+          options={{ title: 'FTP Connections' }}
+        />
+        <Stack.Screen
+          name="FTPBrowser"
+          component={FTPBrowserScreen}
+          options={{ title: 'File Browser' }}
+        />
+        <Stack.Screen
+          name="FTPSettings"
+          component={FTPSettingsScreen}
+          options={{ title: 'FTP Settings' }}
+        />
+        <Stack.Screen
+          name="FileTransfers"
+          component={FileTransfersScreen}
+          options={{ title: 'File Transfers' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

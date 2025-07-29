@@ -55,7 +55,12 @@ export type RootStackParamList = {
   Map: undefined;
   Bookings: undefined;
   Profile: undefined;
+  Files: undefined;
   LocationDetails: { locationId: string };
   BookingFlow: { locationId: string };
   BookingConfirmation: { bookingId: string };
+  FTPConnections: undefined;
+  FTPBrowser: { configId: string };
+  FTPSettings: { configId?: string };
+  FileTransfers: undefined;
 };
