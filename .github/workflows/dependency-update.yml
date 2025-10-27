@@ -1,0 +1,274 @@
+name: Dependency Update Automation
+
+on:
+  schedule:
+    - cron: '0 8 * * MON' # Every Monday at 8 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  update-npm-dependencies:
+    name: Update npm Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Update root dependencies
+      run: |
+        # Update dependencies
+        npx npm-check-updates -u --target minor
+        npm install
+        npm audit fix || true
+        
+    - name: Update client dependencies
+      run: |
+        cd client
+        npx npm-check-updates -u --target minor
+        npm install
+        npm audit fix || true
+        
+    - name: Run tests
+      run: |
+        npm test
+        cd client && npm test -- --watchAll=false
+      continue-on-error: true
+      
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "chore(deps): update npm dependencies"
+        title: "🔄 Update npm dependencies"
+        body: |
+          ## Automated Dependency Update
+          
+          This PR updates npm dependencies to their latest minor versions.
+          
+          ### Changes
+          - Updated root package dependencies
+          - Updated client package dependencies
+          - Ran `npm audit fix` to address security vulnerabilities
+          
+          ### Checklist
+          - [ ] All tests pass
+          - [ ] No breaking changes identified
+          - [ ] Security vulnerabilities addressed
+          
+          Please review the changes and test locally before merging.
+        branch: deps/npm-update-${{ github.run_number }}
+        delete-branch: true
+        labels: |
+          dependencies
+          automated
+
+  update-docker-base-images:
+    name: Update Docker Base Images
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Update Dockerfile base images
+      run: |
+        # Update Node.js version in Dockerfiles
+        find . -name "Dockerfile*" -type f -exec sed -i 's/FROM node:[0-9]\+\.[0-9]\+-alpine/FROM node:18-alpine/g' {} +
+        
+        # Update other base images to latest stable
+        sed -i 's/mongo:[0-9]\+\.[0-9]\+/mongo:7.0/g' docker-compose*.yml
+        sed -i 's/redis:[0-9]\+\.[0-9]\+-alpine/redis:7.2-alpine/g' docker-compose*.yml
+        
+    - name: Test Docker builds
+      run: |
+        docker build -t test-build .
+        docker build -t test-build-client ./client
+      continue-on-error: true
+      
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "chore(deps): update Docker base images"
+        title: "🐳 Update Docker base images"
+        body: |
+          ## Automated Docker Base Image Update
+          
+          This PR updates Docker base images to their latest stable versions.
+          
+          ### Changes
+          - Updated Node.js base image versions
+          - Updated MongoDB image version
+          - Updated Redis image version
+          
+          Please review and test the builds before merging.
+        branch: deps/docker-update-${{ github.run_number }}
+        delete-branch: true
+        labels: |
+          dependencies
+          docker
+          automated
+
+  security-patches:
+    name: Apply Security Patches
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Check for security updates
+      id: security_check
+      run: |
+        # Check for security vulnerabilities
+        npm audit --json > audit-results.json || true
+        cd client && npm audit --json > ../client-audit-results.json || true
+        
+        # Count vulnerabilities
+        VULN_COUNT=$(jq '.metadata.vulnerabilities.total' audit-results.json)
+        CLIENT_VULN_COUNT=$(jq '.metadata.vulnerabilities.total' client-audit-results.json)
+        
+        echo "vuln_count=$VULN_COUNT" >> $GITHUB_OUTPUT
+        echo "client_vuln_count=$CLIENT_VULN_COUNT" >> $GITHUB_OUTPUT
+        
+    - name: Apply security patches
+      if: steps.security_check.outputs.vuln_count > 0 || steps.security_check.outputs.client_vuln_count > 0
+      run: |
+        # Apply automatic fixes
+        npm audit fix --force || true
+        cd client && npm audit fix --force || true
+        
+        # Update lock files
+        npm install
+        cd client && npm install
+        
+    - name: Create Security PR
+      if: steps.security_check.outputs.vuln_count > 0 || steps.security_check.outputs.client_vuln_count > 0
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "security: apply npm security patches"
+        title: "🔒 [SECURITY] Apply npm security patches"
+        body: |
+          ## Security Patch Update
+          
+          This PR applies security patches for known vulnerabilities.
+          
+          ### Vulnerabilities Found
+          - Root package: ${{ steps.security_check.outputs.vuln_count }} vulnerabilities
+          - Client package: ${{ steps.security_check.outputs.client_vuln_count }} vulnerabilities
+          
+          ### Actions Taken
+          - Ran `npm audit fix --force` to apply patches
+          - Updated package-lock.json files
+          
+          ⚠️ **Please test thoroughly** as `--force` may introduce breaking changes.
+          
+          ### Priority
+          This is a security update and should be reviewed and tested with high priority.
+        branch: security/npm-patches-${{ github.run_number }}
+        delete-branch: true
+        labels: |
+          security
+          dependencies
+          automated
+          priority:high
+
+  renovate-config:
+    name: Setup Renovate Bot
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Create Renovate config
+      run: |
+        cat > renovate.json << 'EOF'
+        {
+          "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+          "extends": [
+            "config:base",
+            "group:allNonMajor",
+            "schedule:weekly"
+          ],
+          "packageRules": [
+            {
+              "matchUpdateTypes": ["patch", "pin", "digest"],
+              "automerge": true
+            },
+            {
+              "matchDepTypes": ["devDependencies"],
+              "automerge": true
+            },
+            {
+              "matchPackagePatterns": ["^@types/"],
+              "automerge": true
+            },
+            {
+              "matchManagers": ["dockerfile"],
+              "enabled": true
+            },
+            {
+              "matchManagers": ["docker-compose"],
+              "enabled": true
+            }
+          ],
+          "vulnerabilityAlerts": {
+            "enabled": true,
+            "labels": ["security"]
+          },
+          "prConcurrentLimit": 3,
+          "prCreation": "not-pending",
+          "rangeStrategy": "auto",
+          "semanticCommits": "enabled",
+          "labels": ["dependencies", "renovate"],
+          "assignees": ["@DevOpsTeam"],
+          "reviewers": ["@DevOpsTeam"],
+          "npm": {
+            "minimumReleaseAge": "3 days"
+          },
+          "docker": {
+            "minimumReleaseAge": "3 days"
+          }
+        }
+        EOF
+        
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "chore: add Renovate bot configuration"
+        title: "🤖 Configure Renovate for automated dependency updates"
+        body: |
+          ## Renovate Bot Configuration
+          
+          This PR adds Renovate bot configuration for automated dependency management.
+          
+          ### Features
+          - Weekly dependency updates
+          - Auto-merge for patch and dev dependencies
+          - Security vulnerability alerts
+          - Docker image updates
+          - Semantic commit messages
+          
+          After merging, install the Renovate GitHub App to enable automated updates.
+        branch: chore/renovate-config
+        delete-branch: true

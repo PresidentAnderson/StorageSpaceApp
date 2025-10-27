@@ -1,0 +1,314 @@
+name: Release Management
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.2.3)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Is this a pre-release?'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Get version
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION=${GITHUB_REF#refs/tags/}
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        
+    - name: Generate changelog
+      id: changelog
+      uses: mikepenz/release-changelog-builder-action@v4
+      with:
+        configuration: ".github/changelog-config.json"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_version.outputs.version }}
+        release_name: Release ${{ steps.get_version.outputs.version }}
+        body: |
+          ## What's Changed
+          ${{ steps.changelog.outputs.changelog }}
+          
+          ## Docker Images
+          - API: `ghcr.io/${{ github.repository }}:${{ steps.get_version.outputs.version }}`
+          - Client: `ghcr.io/${{ github.repository }}-client:${{ steps.get_version.outputs.version }}`
+          
+          ## Installation
+          ```bash
+          docker-compose -f docker-compose.enterprise.yml pull
+          docker-compose -f docker-compose.enterprise.yml up -d
+          ```
+        draft: false
+        prerelease: ${{ github.event.inputs.prerelease || false }}
+
+  build-and-publish:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - context: .
+            dockerfile: Dockerfile
+            image: ${{ github.repository }}
+          - context: ./client
+            dockerfile: Dockerfile
+            image: ${{ github.repository }}-client
+            
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: |
+          ghcr.io/${{ matrix.image }}
+          docker.io/${{ matrix.image }}
+        tags: |
+          type=semver,pattern={{version}},value=${{ needs.create-release.outputs.version }}
+          type=semver,pattern={{major}}.{{minor}},value=${{ needs.create-release.outputs.version }}
+          type=semver,pattern={{major}},value=${{ needs.create-release.outputs.version }}
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.context }}
+        file: ${{ matrix.context }}/${{ matrix.dockerfile }}
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          VERSION=${{ needs.create-release.outputs.version }}
+          BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          VCS_REF=${GITHUB_SHA::8}
+
+  generate-sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    needs: [create-release, build-and-publish]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Generate SBOM for Node.js
+      run: |
+        npx @cyclonedx/cyclonedx-npm --output-format json --output-file sbom-api.json
+        cd client && npx @cyclonedx/cyclonedx-npm --output-format json --output-file ../sbom-client.json
+        
+    - name: Generate SBOM for containers
+      uses: anchore/sbom-action@v0
+      with:
+        image: ghcr.io/${{ github.repository }}:${{ needs.create-release.outputs.version }}
+        format: spdx-json
+        output-file: sbom-container.json
+        
+    - name: Upload SBOMs to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: sbom-api.json
+        asset_name: sbom-api-${{ needs.create-release.outputs.version }}.json
+        asset_content_type: application/json
+
+  create-deployment-package:
+    name: Create Deployment Package
+    runs-on: ubuntu-latest
+    needs: create-release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Create deployment package
+      run: |
+        mkdir -p deployment-package
+        cp docker-compose.enterprise.yml deployment-package/
+        cp -r config deployment-package/
+        cp -r scripts deployment-package/
+        cp DEPLOYMENT.md deployment-package/README.md
+        
+        # Create version file
+        echo "${{ needs.create-release.outputs.version }}" > deployment-package/VERSION
+        
+        # Create deployment script
+        cat > deployment-package/deploy.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        VERSION=$(cat VERSION)
+        echo "Deploying ImarketHR version $VERSION"
+        
+        # Pull latest images
+        docker-compose -f docker-compose.enterprise.yml pull
+        
+        # Run database migrations
+        docker-compose -f docker-compose.enterprise.yml run --rm imarket-hr-api npm run migrate
+        
+        # Start services
+        docker-compose -f docker-compose.enterprise.yml up -d
+        
+        # Health check
+        sleep 30
+        curl -f http://localhost:5000/api/health || exit 1
+        
+        echo "Deployment completed successfully!"
+        EOF
+        
+        chmod +x deployment-package/deploy.sh
+        
+        # Create archive
+        tar -czf deployment-package-${{ needs.create-release.outputs.version }}.tar.gz deployment-package/
+        
+    - name: Upload deployment package
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: deployment-package-${{ needs.create-release.outputs.version }}.tar.gz
+        asset_name: deployment-package-${{ needs.create-release.outputs.version }}.tar.gz
+        asset_content_type: application/gzip
+
+  update-documentation:
+    name: Update Documentation
+    runs-on: ubuntu-latest
+    needs: create-release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: main
+        
+    - name: Update version in documentation
+      run: |
+        # Update version in README
+        sed -i "s/Current Version: .*/Current Version: ${{ needs.create-release.outputs.version }}/" README.md
+        
+        # Update docker-compose examples
+        find docs -name "*.md" -type f -exec sed -i "s/:v[0-9]\+\.[0-9]\+\.[0-9]\+/:${{ needs.create-release.outputs.version }}/g" {} +
+        
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: "docs: update version to ${{ needs.create-release.outputs.version }}"
+        title: "Update documentation for release ${{ needs.create-release.outputs.version }}"
+        body: |
+          This PR updates the documentation to reflect the new release version.
+          
+          - Updated version references in README
+          - Updated Docker image tags in examples
+        branch: update-docs-${{ needs.create-release.outputs.version }}
+        delete-branch: true
+
+  notify-release:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [create-release, build-and-publish, generate-sbom, create-deployment-package]
+    if: always()
+    
+    steps:
+    - name: Send Slack notification
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: |
+          Release ${{ needs.create-release.outputs.version }} has been published!
+          
+          Docker Images:
+          - ghcr.io/${{ github.repository }}:${{ needs.create-release.outputs.version }}
+          - ghcr.io/${{ github.repository }}-client:${{ needs.create-release.outputs.version }}
+          
+          Release Notes: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.create-release.outputs.version }}
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        
+    - name: Send email notification
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 465
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: ImarketHR Release ${{ needs.create-release.outputs.version }}
+        to: devops@imarkethr.com
+        from: GitHub Actions
+        body: |
+          A new version of ImarketHR has been released!
+          
+          Version: ${{ needs.create-release.outputs.version }}
+          
+          Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.create-release.outputs.version }}
+          
+          Please review the release notes and deployment instructions.
